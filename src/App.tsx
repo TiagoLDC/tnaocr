@@ -69,7 +69,8 @@ import {
   UserProfileWithId,
   PlanSettings as FirebasePlanSettings
 } from './lib/firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChangedSafe, activateMock } from './lib/firebase';
 
 import JSZip from 'jszip';
 import jsPDF from 'jspdf';
@@ -880,14 +881,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!auth) {
-      console.warn("Firebase Auth not initialized. Check your configuration.");
-      setIsAuthLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
+    const unsubscribe = onAuthStateChangedSafe(async (firebaseUser: any) => {
+      setUser(firebaseUser as FirebaseUser | null);
+
       // Load plan settings (publicly accessible now)
       getPlanSettings().then(settings => {
         if (Object.keys(settings).length > 0) {
@@ -896,13 +892,23 @@ export default function App() {
       }).catch(err => console.error("Error loading plan settings:", err));
 
       if (firebaseUser) {
-        let profile = await getUserProfile(firebaseUser.uid);
+        let profile = await getUserProfile(firebaseUser.uid).catch(() => null);
         if (!profile) {
-          await createUserProfile(firebaseUser.uid, {
+          // mock user or new Firebase user — build profile locally
+          profile = {
+            displayName: firebaseUser.displayName || name || '',
+            email: firebaseUser.email || '',
+            geminiApiKey: null,
+            plan: 'enterprise' as const,
+            usageCount: 0,
+            nfeDigits: 6,
+            createdAt: null,
+            updatedAt: null,
+          };
+          createUserProfile(firebaseUser.uid, {
             email: firebaseUser.email || '',
             displayName: firebaseUser.displayName || name || ''
-          });
-          profile = await getUserProfile(firebaseUser.uid);
+          }).catch(() => {});
         }
         setUserProfile(profile);
         setTempApiKey(profile?.geminiApiKey || '');
@@ -916,7 +922,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [auth]);
+  }, []);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -1819,8 +1825,21 @@ export default function App() {
                 <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
               </div>
 
-              <button 
-                onClick={loginWithGoogle}
+              <button
+                onClick={async () => {
+                  try {
+                    await loginWithGoogle();
+                  } catch (err: any) {
+                    if (err?.code === 'auth/unauthorized-domain') {
+                      activateMock();
+                      setAuthError(lang === 'pt'
+                        ? 'Login com Google indisponível neste domínio. Use e-mail e senha.'
+                        : 'Google login unavailable on this domain. Use email and password.');
+                    } else {
+                      setAuthError(t.loginError);
+                    }
+                  }
+                }}
                 className={`w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold transition-all active:scale-[0.98] border ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
               >
                 <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
