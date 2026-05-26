@@ -7,3 +7,4 @@ coverage/
 .env*
 !.env.example
 *.zip
+_ssh_deploy.py
