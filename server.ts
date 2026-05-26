@@ -27,8 +27,8 @@ const ai = new GoogleGenAI({
 // Retry logic for Gemini API
 const MODEL_FALLBACK_CHAIN = [
   "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-pro",
 ];
 
 async function callGeminiWithRetry(apiKey: string, modelName: string, prompt: string, fileData: { mimeType: string, data: string }, retries = 3) {
