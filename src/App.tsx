@@ -100,7 +100,7 @@ interface ProcessedFile {
   file: File;
   fieldValues: Record<string, string>; // Valores extraídos de cada campo
   status: 'pending' | 'processing' | 'success' | 'error';
-  step?: 'preparando' | 'analisando' | 'finalizando';
+  step?: string;
   errorMessage?: string;
   previewUrl: string;
   trash?: boolean;
@@ -1245,22 +1245,35 @@ export default function App() {
         }
       }
     } catch (error: any) {
-      console.error(error);
       const errorString = String(error?.message || '').toLowerCase();
       const isQuotaError = errorString.includes('429') || errorString.includes('quota') || errorString.includes('exhausted');
-      
+
+      // Extract retry delay from Gemini error response when available
+      let retrySeconds: number | null = null;
+      try {
+        const parsed = JSON.parse(error?.message || '{}');
+        const retryDelay = parsed?.error?.details?.find((d: any) => d['@type']?.includes('RetryInfo'))?.retryDelay;
+        if (retryDelay) retrySeconds = parseInt(retryDelay);
+      } catch { /* ignore */ }
+
       if (isQuotaError && attempt < 3) {
-        const backoff = Math.pow(2, attempt + 1) * 1000;
-        setFiles(prev => prev.map(f => f.id === id ? { ...f, step: `aguardando cota... (${attempt + 1}/3)` } : f));
-        await sleep(backoff);
+        const waitMs = retrySeconds ? retrySeconds * 1000 : Math.pow(2, attempt + 1) * 3000;
+        const waitSec = Math.ceil(waitMs / 1000);
+        const waitMsg = lang === 'pt'
+          ? `⏳ Limite de cota atingido. Aguardando ${waitSec}s antes de tentar novamente... (${attempt + 1}/3)`
+          : `⏳ Rate limit reached. Waiting ${waitSec}s before retry... (${attempt + 1}/3)`;
+        setFiles(prev => prev.map(f => f.id === id ? { ...f, step: waitMsg } : f));
+        await sleep(waitMs);
         return processFile(id, attempt + 1);
       }
 
       let errorMessage = t.errProcess;
       if (isQuotaError) {
-        errorMessage = t.errQuota;
+        errorMessage = lang === 'pt'
+          ? '⚠️ Cota da API Gemini esgotada. Configure sua própria chave API nas Configurações de Conta, ou aguarde o reset diário.'
+          : '⚠️ Gemini API quota exhausted. Add your own API key in Account Settings, or wait for the daily reset.';
       }
-      
+
       setFiles(prev => prev.map(f => f.id === id ? { ...f, status: 'error', step: undefined, errorMessage } : f));
     }
   };
@@ -3454,20 +3467,23 @@ function FileCard({
   );
 }
 
-function StatusBadge({ status, step, error, t }: { status: ProcessedFile['status'], step?: ProcessedFile['step'], error?: string, t: any }) {
+function StatusBadge({ status, step, error, t }: { status: ProcessedFile['status'], step?: string, error?: string, t: any }) {
   switch (status) {
-    case 'processing':
+    case 'processing': {
       const stepLabels: Record<string, string> = {
         preparando: t.stepReading,
         analisando: t.stepAnalyzing,
-        finalizando: t.stepFinalizing
+        finalizando: t.stepFinalizing,
       };
+      const label = step ? (stepLabels[step] ?? step) : t.stepOcr;
+      const isWaiting = step?.startsWith('⏳');
       return (
-        <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600/10 text-blue-500 text-[10px] font-black uppercase tracking-[0.1em]">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          {step ? stepLabels[step] : t.stepOcr}
+        <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${isWaiting ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-600/10 text-blue-500'}`}>
+          <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" />
+          {label}
         </span>
       );
+    }
     case 'success':
       return (
         <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-600/10 text-emerald-500 text-[10px] font-black uppercase tracking-[0.1em]">
@@ -3477,15 +3493,9 @@ function StatusBadge({ status, step, error, t }: { status: ProcessedFile['status
       );
     case 'error':
       return (
-        <div className="group relative">
-           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600/10 text-red-500 text-[10px] font-black uppercase tracking-[0.1em] cursor-help">
-            <AlertCircle className="w-3 h-3" />
-            {t.failBadge}
-          </span>
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg whitespace-nowrap z-20 shadow-xl border border-slate-800">
-            {error || t.notIdentified}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
-          </div>
+        <div className="flex items-start gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/10 text-red-500 text-[11px] font-semibold max-w-xs">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span className="leading-snug">{error || t.notIdentified}</span>
         </div>
       );
     default:
