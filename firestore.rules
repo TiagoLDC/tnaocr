@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions (Phase 3: Primitive Definition) ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email_verified == true && 
+             (request.auth.token.email == "contatotnadigital@gmail.com" || 
+              request.auth.token.email == "sistematna@gmail.com");
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      let requiredFields = ['email', 'createdAt', 'updatedAt', 'plan', 'usageCount'];
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().size() <= 15 &&
+             data.email is string &&
+             (data.displayName == null || data.displayName is string) &&
+             (data.geminiApiKey == null || data.geminiApiKey is string) &&
+             data.plan in ['free', 'basico', 'pro', 'enterprise'] &&
+             data.usageCount is int &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidPlanSettings(data, isUpdate) {
+      return data.keys().hasAll(['updatedAt']) &&
+             (isUpdate || data.keys().hasAll(['price', 'description'])) &&
+             (data.price == null || data.price is string) &&
+             (data.description == null || data.description is string) &&
+             data.updatedAt is timestamp;
+    }
+
+    // --- Match Blocks ---
+
+    // Connection test rule
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if isOwner(userId) && 
+                      isValidId(userId) && 
+                      isValidUser(incoming()) && 
+                      incoming().createdAt == request.time &&
+                      incoming().plan == 'free' &&
+                      incoming().usageCount == 0;
+
+      allow update: if (isOwner(userId) || isAdmin()) && 
+                      isValidId(userId) &&
+                      isValidUser(incoming()) && 
+                      incoming().updatedAt == request.time &&
+                      incoming().createdAt == existing().createdAt && (
+                        isAdmin() || (
+                          // User Action: Update Gemini Key, Profile Name, NFe Digits or Usage
+                          incoming().diff(existing()).affectedKeys().hasAny(['geminiApiKey', 'displayName', 'nfeDigits', 'updatedAt', 'usageCount'])
+                        )
+                      );
+    }
+
+    // 2. Plan Settings
+    match /plan_settings/{planId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && isValidId(planId) && isValidPlanSettings(incoming(), false) && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(planId) && isValidPlanSettings(incoming(), true) && incoming().updatedAt == request.time;
+    }
+  }
+}

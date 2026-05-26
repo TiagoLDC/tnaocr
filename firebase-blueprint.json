@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "geminiApiKey": { "type": "string", "description": "User's individual Gemini API Key" },
+        "nfeDigits": { "type": "integer", "description": "Number of digits for NFe formatting" },
+        "plan": { "type": "string", "enum": ["free", "basico", "pro", "enterprise"], "description": "Current subscription plan" },
+        "usageCount": { "type": "integer", "description": "Total files processed" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt", "updatedAt"]
+    },
+    "PlanSettings": {
+      "title": "Plan Settings",
+      "description": "System-wide plan pricing configuration",
+      "type": "object",
+      "properties": {
+        "price": { "type": "string" },
+        "description": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["price", "description", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Individual user profiles and configurations"
+    },
+    "plan_settings/{planId}": {
+      "schema": "PlanSettings",
+      "description": "Pricing and info for each plan type"
+    }
+  }
+}

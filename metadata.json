@@ -1,0 +1,6 @@
+{
+  "name": "TNA OCR ",
+  "description": "Sistema de OCR para identificar e renomear notas fiscais escaneadas automaticamente pela TNA Digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
