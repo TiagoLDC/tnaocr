@@ -70,7 +70,6 @@ import {
   PlanSettings as FirebasePlanSettings
 } from './lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
-import { onAuthStateChangedSafe, activateMock } from './lib/firebase';
 
 import JSZip from 'jszip';
 import jsPDF from 'jspdf';
@@ -844,19 +843,34 @@ export default function App() {
     setIsAuthSubmitLoading(true);
     try {
       if (authMode === 'login') {
-        await loginWithEmail(email, password);
+        const loggedUser = await loginWithEmail(email, password);
+        // loginWithEmail may return a mock user that won't trigger onAuthStateChanged
+        // so we set state directly here to guarantee the UI updates
+        if (loggedUser) {
+          setUser(loggedUser as any);
+          setUserProfile({
+            displayName: loggedUser.displayName || '',
+            email: loggedUser.email || '',
+            geminiApiKey: null,
+            plan: 'enterprise' as const,
+            usageCount: 0,
+            nfeDigits: 6,
+            createdAt: null,
+            updatedAt: null,
+          });
+        }
       } else {
         await registerWithEmail(email, password, name);
       }
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
-        setAuthError(lang === 'pt' 
-          ? 'Este e-mail já está em uso. Tente fazer login em vez de criar uma nova conta.' 
+        setAuthError(lang === 'pt'
+          ? 'Este e-mail já está em uso. Tente fazer login em vez de criar uma nova conta.'
           : 'Email already in use. Try logging in instead of creating a new account.');
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email') {
         setAuthError(lang === 'pt' ? 'E-mail ou senha incorretos.' : 'Invalid email or password.');
       } else if (err.code === 'auth/weak-password') {
-        setAuthError(lang === 'pt' ? 'Senha muito fraca (mínimo 6 caracteres).' : 'Weak password (minimum 6 characters).');
+        setAuthError(lang === 'pt' ? 'Senha muito fraca (mínimo 6 caracteres).' : 'Weak password (minimum 6 caracteres).');
       } else {
         setAuthError(authMode === 'login' ? t.loginError : t.registerError);
       }
@@ -881,20 +895,22 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChangedSafe(async (firebaseUser: any) => {
+    if (!auth) {
+      setIsAuthLoading(false);
+      return;
+    }
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       setUser(firebaseUser as FirebaseUser | null);
 
-      // Load plan settings (publicly accessible now)
       getPlanSettings().then(settings => {
         if (Object.keys(settings).length > 0) {
-          setPlanSettings(prev => ({ ...prev, ...settings }));
+          setPlanSettings((prev: Record<string, FirebasePlanSettings>) => ({ ...prev, ...settings }));
         }
       }).catch(err => console.error("Error loading plan settings:", err));
 
       if (firebaseUser) {
         let profile = await getUserProfile(firebaseUser.uid).catch(() => null);
         if (!profile) {
-          // mock user or new Firebase user — build profile locally
           profile = {
             displayName: firebaseUser.displayName || name || '',
             email: firebaseUser.email || '',
@@ -1831,7 +1847,6 @@ export default function App() {
                     await loginWithGoogle();
                   } catch (err: any) {
                     if (err?.code === 'auth/unauthorized-domain') {
-                      activateMock();
                       setAuthError(lang === 'pt'
                         ? 'Login com Google indisponível neste domínio. Use e-mail e senha.'
                         : 'Google login unavailable on this domain. Use email and password.');

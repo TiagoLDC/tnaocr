@@ -16,9 +16,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, getDocs, query, orderBy, getDocFromServer, Firestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { mockAuth, mockLoginWithEmail, mockLogout, MOCK_USER_PROFILE, MockUser, MOCK_USERS } from './mockAuth';
-
-let _useMock = false;
+import { mockLoginWithEmail, MOCK_USERS } from './mockAuth';
 
 // Helper to check if config is valid (not placeholders)
 const isConfigValid = firebaseConfig && 
@@ -44,19 +42,6 @@ if (isConfigValid) {
 export const googleProvider = new GoogleAuthProvider();
 
 export { db, auth };
-
-export function onAuthStateChangedSafe(
-  callback: (user: any) => void
-): () => void {
-  if (_useMock || !auth) {
-    return mockAuth.onAuthStateChanged(callback);
-  }
-  return onAuthStateChanged(auth, callback);
-}
-
-export function activateMock() {
-  _useMock = true;
-}
 
 // Error Handling Infrastructure
 enum OperationType {
@@ -141,7 +126,6 @@ export async function loginWithGoogle() {
     return result.user;
   } catch (error: any) {
     if (error?.code === 'auth/unauthorized-domain') {
-      _useMock = true;
       const err: any = new Error('Login com Google indisponível neste domínio. Use e-mail e senha.');
       err.code = 'auth/unauthorized-domain';
       throw err;
@@ -162,22 +146,12 @@ export async function registerWithEmail(email: string, pass: string, name: strin
 }
 
 export async function loginWithEmail(email: string, pass: string) {
-  // If the email belongs to a mock user, bypass Firebase entirely
-  if (_useMock || MOCK_USERS[email.toLowerCase()]) {
-    _useMock = true;
+  if (MOCK_USERS[email.toLowerCase()]) {
     return mockLoginWithEmail(email, pass);
   }
   const currentAuth = ensureAuth();
-  try {
-    const result = await signInWithEmailAndPassword(currentAuth, email, pass);
-    return result.user;
-  } catch (error: any) {
-    if (error?.code === 'auth/unauthorized-domain') {
-      _useMock = true;
-      return mockLoginWithEmail(email, pass);
-    }
-    throw error;
-  }
+  const result = await signInWithEmailAndPassword(currentAuth, email, pass);
+  return result.user;
 }
 
 export async function resetPassword(email: string) {
@@ -190,11 +164,7 @@ export async function resetPassword(email: string) {
 }
 
 export async function logout() {
-  if (_useMock) {
-    return mockLogout();
-  }
-  const currentAuth = ensureAuth();
-  await signOut(currentAuth);
+  if (auth) await signOut(auth);
 }
 
 export async function updateUserPassword(newPass: string) {
