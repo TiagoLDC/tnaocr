@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = 3006;
+const PORT = parseInt(process.env.PORT || '3006', 10);
 
 // Increase payload limit for base64 files
 app.use(express.json({ limit: '50mb' }));
