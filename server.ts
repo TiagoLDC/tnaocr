@@ -84,7 +84,7 @@ app.post("/api/process-ocr", async (req, res) => {
 
     const text = await callGeminiWithRetry(
       apiKey,
-      "gemini-3.5-flash", // Use the supported modern gemini-3.5-flash model for OCR
+      "gemini-2.0-flash",
       prompt,
       { mimeType, data: fileBase64 }
     );
