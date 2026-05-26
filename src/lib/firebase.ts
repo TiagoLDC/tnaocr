@@ -16,7 +16,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, getDocs, query, orderBy, getDocFromServer, Firestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { mockAuth, mockLoginWithEmail, mockLogout, MOCK_USER_PROFILE, MockUser } from './mockAuth';
+import { mockAuth, mockLoginWithEmail, mockLogout, MOCK_USER_PROFILE, MockUser, MOCK_USERS } from './mockAuth';
 
 let _useMock = false;
 
@@ -162,7 +162,9 @@ export async function registerWithEmail(email: string, pass: string, name: strin
 }
 
 export async function loginWithEmail(email: string, pass: string) {
-  if (_useMock) {
+  // If the email belongs to a mock user, bypass Firebase entirely
+  if (_useMock || MOCK_USERS[email.toLowerCase()]) {
+    _useMock = true;
     return mockLoginWithEmail(email, pass);
   }
   const currentAuth = ensureAuth();

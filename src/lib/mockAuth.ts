@@ -1,4 +1,4 @@
-const MOCK_USERS: Record<string, { password: string; displayName: string; uid: string }> = {
+export const MOCK_USERS: Record<string, { password: string; displayName: string; uid: string }> = {
   'contato@tnadigital.com.br': {
     password: 'Tna2026',
     displayName: 'TNA Digital',
