@@ -1223,12 +1223,15 @@ export default function App() {
           throw new Error(t.notIdentified);
         }
 
-        // Increment usage count in Firestore
-        if (user?.uid) {
-          await incrementUsage(user.uid);
-          // Refresh profile to update UI
-          const newProfile = await getUserProfile(user.uid);
-          setUserProfile(newProfile);
+        // Increment usage count in Firestore (skip for mock users)
+        if (user?.uid && !user.uid.startsWith('mock-')) {
+          try {
+            await incrementUsage(user.uid);
+            const newProfile = await getUserProfile(user.uid);
+            setUserProfile(newProfile);
+          } catch { /* ignore Firestore errors silently */ }
+        } else if (user?.uid.startsWith('mock-')) {
+          setUserProfile((prev: FirebaseUserProfile | null) => prev ? { ...prev, usageCount: (prev.usageCount || 0) + 1 } : prev);
         }
 
         setFiles(prev => prev.map(f => f.id === id ? { ...f, status: 'success', step: undefined, fieldValues: newFieldValues, errorMessage: undefined } : f));
