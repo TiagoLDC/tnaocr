@@ -25,45 +25,62 @@ const ai = new GoogleGenAI({
 });
 
 // Retry logic for Gemini API
+const MODEL_FALLBACK_CHAIN = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+];
+
 async function callGeminiWithRetry(apiKey: string, modelName: string, prompt: string, fileData: { mimeType: string, data: string }, retries = 3) {
-  // If a custom API key is provided, we create a temporary instance
   const genAI = apiKey === process.env.GEMINI_API_KEY ? ai : new GoogleGenAI({
     apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
+    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
   });
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      const result = await genAI.models.generateContent({
-        model: modelName,
-        contents: {
-          parts: [
-            { text: prompt },
-            { inlineData: fileData }
-          ]
-        },
-        config: {
-          responseMimeType: "application/json"
+  // Build model chain: requested model first, then fallbacks (deduped)
+  const modelChain = [modelName, ...MODEL_FALLBACK_CHAIN.filter(m => m !== modelName)];
+
+  for (const model of modelChain) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const result = await genAI.models.generateContent({
+          model,
+          contents: { parts: [{ text: prompt }, { inlineData: fileData }] },
+          config: { responseMimeType: "application/json" }
+        });
+        if (model !== modelName) console.log(`Fallback succeeded with model: ${model}`);
+        return result.text || "";
+      } catch (error: any) {
+        const status = error?.status || error?.response?.status;
+        const isRateLimit = status === 429 || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
+        const isUnavailable = status === 503 || error?.message?.includes("503") || error?.message?.includes("UNAVAILABLE");
+
+        if (isRateLimit && i < retries - 1) {
+          const delay = Math.pow(2, i) * 3000;
+          console.log(`[${model}] Rate limit (429). Retrying in ${delay}ms... (${i + 1}/${retries})`);
+          await sleep(delay);
+          continue;
         }
-      });
-      return result.text || "";
-    } catch (error: any) {
-      const status = error?.status || error?.response?.status;
-      const isRateLimit = status === 429 || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
-      
-      if (isRateLimit && i < retries - 1) {
-        const delay = Math.pow(2, i) * 3000; // Increase initial delay to 3s
-        console.log(`Rate limit hit (429). Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
-        await sleep(delay);
-        continue;
+
+        if (isUnavailable && i < retries - 1) {
+          const delay = Math.pow(2, i) * 2000;
+          console.log(`[${model}] Unavailable (503). Retrying in ${delay}ms... (${i + 1}/${retries})`);
+          await sleep(delay);
+          continue;
+        }
+
+        // For 503/quota after retries exhausted, try next model in chain
+        if ((isUnavailable || isRateLimit) && i === retries - 1) {
+          console.log(`[${model}] Exhausted retries (${status}), trying next model...`);
+          break;
+        }
+
+        throw error;
       }
-      throw error;
     }
   }
+
+  throw new Error("All models exhausted. Please try again later.");
 }
 
 // API Routes
