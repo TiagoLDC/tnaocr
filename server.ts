@@ -84,7 +84,7 @@ app.post("/api/process-ocr", async (req, res) => {
 
     const text = await callGeminiWithRetry(
       apiKey,
-      "gemini-2.0-flash",
+      "gemini-2.5-flash",
       prompt,
       { mimeType, data: fileBase64 }
     );
