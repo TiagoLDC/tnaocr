@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
+  onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
@@ -50,7 +51,6 @@ export function onAuthStateChangedSafe(
   if (_useMock || !auth) {
     return mockAuth.onAuthStateChanged(callback);
   }
-  const { onAuthStateChanged } = require('firebase/auth') as typeof import('firebase/auth');
   return onAuthStateChanged(auth, callback);
 }
 
